@@ -88,7 +88,27 @@ Module['ready'] = new Promise(function(resolve, reject) {
 
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
+setTimeout(function () {
+    Module['InternalBrowser'] = Browser || {};
+    if (GL && GL.createContext)
+    {
+        GL.createContextOld = GL.createContext;
+        GL.createContext = function (canvas, webGLContextAttributes)
+        {
+            var contextAttributes = {
+                xrCompatible: true
+            };
 
+            if (webGLContextAttributes) {
+                for (var attribute in webGLContextAttributes) {
+                    contextAttributes[attribute] = webGLContextAttributes[attribute];
+                }
+            }
+            
+            return GL.createContextOld(canvas, contextAttributes);
+        }
+    }
+}, 0)
 
 
 // Emscripten 1.x had a function Pointer_stringify() to marshal C strings to JS strings. That has been obsoleted by the new UTF8/16/32ToString() API family.
@@ -1975,13 +1995,13 @@ var tempI64;
 // === Body ===
 
 var ASM_CONSTS = {
-  3846132: function() {Module['emscripten_get_now_backup'] = performance.now;},  
- 3846187: function($0) {performance.now = function() { return $0; };},  
- 3846235: function($0) {performance.now = function() { return $0; };},  
- 3846283: function() {performance.now = Module['emscripten_get_now_backup'];},  
- 3846338: function() {return Module.webglContextAttributes.premultipliedAlpha;},  
- 3846399: function() {return Module.webglContextAttributes.preserveDrawingBuffer;},  
- 3846463: function() {return Module.webglContextAttributes.powerPreference;}
+  3854356: function() {Module['emscripten_get_now_backup'] = performance.now;},  
+ 3854411: function($0) {performance.now = function() { return $0; };},  
+ 3854459: function($0) {performance.now = function() { return $0; };},  
+ 3854507: function() {performance.now = Module['emscripten_get_now_backup'];},  
+ 3854562: function() {return Module.webglContextAttributes.premultipliedAlpha;},  
+ 3854623: function() {return Module.webglContextAttributes.preserveDrawingBuffer;},  
+ 3854687: function() {return Module.webglContextAttributes.powerPreference;}
 };
 
 
@@ -2127,6 +2147,10 @@ var ASM_CONSTS = {
       var js = jsStackTrace();
       if (Module['extraStackTrace']) js += '\n' + Module['extraStackTrace']();
       return demangleAll(js);
+    }
+
+  function _ConfigureToggleXRKeyName(keyName) {
+      document.dispatchEvent(new CustomEvent('Unity', {detail: 'ConfigureToggleVRKeyName:' + Pointer_stringify(keyName)}));
     }
 
   function _GetJSMemoryInfo(totalJSptr, usedJSptr) {
@@ -3606,6 +3630,28 @@ var ASM_CONSTS = {
   
           requestOptions.timeout = timeout;
   	}
+
+  function _ListenWebXRData() {
+      // Listen for headset updates from webxr.js and load data into shared Array which we pick up in Unity.
+      document.addEventListener('VRData', function(evt) {
+        var data = evt.detail;
+  
+        Object.keys(data).forEach(function (key, i) {
+          var dataLength = data[key].length;
+          for (var x = 0; x < dataLength; x++) {
+            SharedArray[i * dataLength + x] = data[key][x];
+          }
+        });
+      });
+    }
+
+  function _XRInitSharedArray(byteOffset, length) {
+      SharedArray = new Float32Array(buffer, byteOffset, length);
+    }
+
+  function _XRPostRender() {
+      document.dispatchEvent(new CustomEvent('Unity', {detail: 'PostRender'}));
+    }
 
   function ___assert_fail(condition, filename, line, func) {
       abort('Assertion failed: ' + UTF8ToString(condition) + ', at: ' + [filename ? UTF8ToString(filename) : 'unknown filename', line, func ? UTF8ToString(func) : 'unknown function']);
@@ -8196,6 +8242,10 @@ var ASM_CONSTS = {
 
   function _abort() {
       abort('native code called abort()');
+    }
+
+  function _displayXRElementId(id) {
+      document.dispatchEvent(new CustomEvent('Unity', {detail: {type: 'displayElementId', id: Pointer_stringify(id)}}));
     }
 
   var readAsmConstArgsArray = [];
@@ -14091,6 +14141,7 @@ function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
 var asmLibraryArg = {
+  "ConfigureToggleXRKeyName": _ConfigureToggleXRKeyName,
   "GetJSMemoryInfo": _GetJSMemoryInfo,
   "JS_Accelerometer_IsRunning": _JS_Accelerometer_IsRunning,
   "JS_Accelerometer_Start": _JS_Accelerometer_Start,
@@ -14158,6 +14209,9 @@ var asmLibraryArg = {
   "JS_WebRequest_SetRedirectLimit": _JS_WebRequest_SetRedirectLimit,
   "JS_WebRequest_SetRequestHeader": _JS_WebRequest_SetRequestHeader,
   "JS_WebRequest_SetTimeout": _JS_WebRequest_SetTimeout,
+  "ListenWebXRData": _ListenWebXRData,
+  "XRInitSharedArray": _XRInitSharedArray,
+  "XRPostRender": _XRPostRender,
   "__assert_fail": ___assert_fail,
   "__cxa_allocate_exception": ___cxa_allocate_exception,
   "__cxa_begin_catch": ___cxa_begin_catch,
@@ -14207,6 +14261,7 @@ var asmLibraryArg = {
   "_munmap_js": __munmap_js,
   "_tzset_js": __tzset_js,
   "abort": _abort,
+  "displayXRElementId": _displayXRElementId,
   "emscripten_asm_const_int": _emscripten_asm_const_int,
   "emscripten_asm_const_int_sync_on_main_thread": _emscripten_asm_const_int_sync_on_main_thread,
   "emscripten_cancel_main_loop": _emscripten_cancel_main_loop,
@@ -14489,6 +14544,7 @@ var asmLibraryArg = {
   "invoke_viifii": invoke_viifii,
   "invoke_viifiii": invoke_viifiii,
   "invoke_viii": invoke_viii,
+  "invoke_viiifi": invoke_viiifi,
   "invoke_viiifii": invoke_viiifii,
   "invoke_viiii": invoke_viiii,
   "invoke_viiiidi": invoke_viiiidi,
@@ -14888,6 +14944,15 @@ var dynCall_vjjjiiii = Module["dynCall_vjjjiiii"] = createExportWrapper("dynCall
 var dynCall_vjiiiii = Module["dynCall_vjiiiii"] = createExportWrapper("dynCall_vjiiiii");
 
 /** @type {function(...*):?} */
+var dynCall_viiifi = Module["dynCall_viiifi"] = createExportWrapper("dynCall_viiifi");
+
+/** @type {function(...*):?} */
+var dynCall_viiiiiiiiiiiii = Module["dynCall_viiiiiiiiiiiii"] = createExportWrapper("dynCall_viiiiiiiiiiiii");
+
+/** @type {function(...*):?} */
+var dynCall_ffffi = Module["dynCall_ffffi"] = createExportWrapper("dynCall_ffffi");
+
+/** @type {function(...*):?} */
 var dynCall_iiiji = Module["dynCall_iiiji"] = createExportWrapper("dynCall_iiiji");
 
 /** @type {function(...*):?} */
@@ -14936,9 +15001,6 @@ var dynCall_vffi = Module["dynCall_vffi"] = createExportWrapper("dynCall_vffi");
 var dynCall_vffffi = Module["dynCall_vffffi"] = createExportWrapper("dynCall_vffffi");
 
 /** @type {function(...*):?} */
-var dynCall_viiifi = Module["dynCall_viiifi"] = createExportWrapper("dynCall_viiifi");
-
-/** @type {function(...*):?} */
 var dynCall_viiiiffi = Module["dynCall_viiiiffi"] = createExportWrapper("dynCall_viiiiffi");
 
 /** @type {function(...*):?} */
@@ -14964,9 +15026,6 @@ var dynCall_vfiii = Module["dynCall_vfiii"] = createExportWrapper("dynCall_vfiii
 
 /** @type {function(...*):?} */
 var dynCall_ffi = Module["dynCall_ffi"] = createExportWrapper("dynCall_ffi");
-
-/** @type {function(...*):?} */
-var dynCall_ffffi = Module["dynCall_ffffi"] = createExportWrapper("dynCall_ffffi");
 
 /** @type {function(...*):?} */
 var dynCall_iffi = Module["dynCall_iffi"] = createExportWrapper("dynCall_iffi");
@@ -15299,6 +15358,9 @@ var dynCall_ijjjjii = Module["dynCall_ijjjjii"] = createExportWrapper("dynCall_i
 var dynCall_ijjjiiiii = Module["dynCall_ijjjiiiii"] = createExportWrapper("dynCall_ijjjiiiii");
 
 /** @type {function(...*):?} */
+var dynCall_iiiiiiiiiiiiiiii = Module["dynCall_iiiiiiiiiiiiiiii"] = createExportWrapper("dynCall_iiiiiiiiiiiiiiii");
+
+/** @type {function(...*):?} */
 var dynCall_idiiii = Module["dynCall_idiiii"] = createExportWrapper("dynCall_idiiii");
 
 /** @type {function(...*):?} */
@@ -15396,9 +15458,6 @@ var dynCall_ijiiiii = Module["dynCall_ijiiiii"] = createExportWrapper("dynCall_i
 
 /** @type {function(...*):?} */
 var dynCall_ijiiiiji = Module["dynCall_ijiiiiji"] = createExportWrapper("dynCall_ijiiiiji");
-
-/** @type {function(...*):?} */
-var dynCall_viiiiiiiiiiiii = Module["dynCall_viiiiiiiiiiiii"] = createExportWrapper("dynCall_viiiiiiiiiiiii");
 
 /** @type {function(...*):?} */
 var dynCall_ddii = Module["dynCall_ddii"] = createExportWrapper("dynCall_ddii");
@@ -15560,6 +15619,9 @@ var dynCall_iiiijiii = Module["dynCall_iiiijiii"] = createExportWrapper("dynCall
 var dynCall_iiiij = Module["dynCall_iiiij"] = createExportWrapper("dynCall_iiiij");
 
 /** @type {function(...*):?} */
+var dynCall_viff = Module["dynCall_viff"] = createExportWrapper("dynCall_viff");
+
+/** @type {function(...*):?} */
 var dynCall_iiiiiifff = Module["dynCall_iiiiiifff"] = createExportWrapper("dynCall_iiiiiifff");
 
 /** @type {function(...*):?} */
@@ -15609,9 +15671,6 @@ var dynCall_iiiifffffii = Module["dynCall_iiiifffffii"] = createExportWrapper("d
 
 /** @type {function(...*):?} */
 var dynCall_viiiiiiiiiiifii = Module["dynCall_viiiiiiiiiiifii"] = createExportWrapper("dynCall_viiiiiiiiiiifii");
-
-/** @type {function(...*):?} */
-var dynCall_viff = Module["dynCall_viff"] = createExportWrapper("dynCall_viff");
 
 /** @type {function(...*):?} */
 var dynCall_iiiiifiiiiif = Module["dynCall_iiiiifiiiiif"] = createExportWrapper("dynCall_iiiiifiiiiif");
@@ -16263,6 +16322,17 @@ function invoke_viiiiiiiii(index,a1,a2,a3,a4,a5,a6,a7,a8,a9) {
   var sp = stackSave();
   try {
     dynCall_viiiiiiiii(index,a1,a2,a3,a4,a5,a6,a7,a8,a9);
+  } catch(e) {
+    stackRestore(sp);
+    if (e !== e+0) throw e;
+    _setThrew(1, 0);
+  }
+}
+
+function invoke_viiifi(index,a1,a2,a3,a4,a5) {
+  var sp = stackSave();
+  try {
+    dynCall_viiifi(index,a1,a2,a3,a4,a5);
   } catch(e) {
     stackRestore(sp);
     if (e !== e+0) throw e;
